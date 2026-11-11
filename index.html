@@ -4,7 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#FFF4E8">
+<meta name="theme-color" content="#FF5C8A">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
 <title>찰칵 인생컷 사진관</title>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -38,7 +41,7 @@ h1,h2{margin:0;font-weight:400}
 @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.07)}}
 .floaty{position:absolute;font-size:56px;animation:floaty 6s ease-in-out infinite;opacity:.9;z-index:1;pointer-events:none}
 @keyframes floaty{0%,100%{transform:translateY(0) rotate(-8deg)}50%{transform:translateY(-26px) rotate(8deg)}}
-#gear{position:absolute;right:14px;bottom:14px;font-size:22px;padding:8px 12px;opacity:.45;z-index:3}
+#gear{position:absolute;left:14px;bottom:14px;font-size:22px;padding:8px 12px;opacity:.45;z-index:3}
 
 /* mode */
 #scr-mode{align-items:center;justify-content:center;gap:26px;padding:20px}
@@ -179,7 +182,7 @@ h1,h2{margin:0;font-weight:400}
       <div id="camBox">
         <div id="camFrame">
           <video id="video" playsinline muted autoplay></video>
-          <div class="nocam" id="noCam">카메라 화면을 열 수 없어요.<br>버튼을 누르면 패드의 카메라 앱으로 찍을 수 있어요.</div>
+          <div class="nocam" id="noCam"><div><div id="noCamWhy"></div><div style="margin-top:14px;font-size:20px;opacity:.85">또는 오른쪽 버튼을 누르면 패드의 카메라 앱으로 찍을 수 있어요.</div><button id="camRetry" class="yel" style="margin-top:16px">🔄 다시 시도</button></div></div>
           <div id="cd" class="cd"></div>
           <div id="flash"></div>
           <div id="camMsg" class="cammsg"></div>
@@ -797,14 +800,37 @@ function newSession(k) {
 
 /* ===================== 카메라 ===================== */
 const video = $('#video');
+let camErr = '';
 async function startCamera() {
-  if (stream) return true;
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return false;
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: S.camera, width: { ideal: 1920 }, height: { ideal: 1440 } }, audio: false });
-    video.srcObject = stream; await video.play().catch(() => { });
-    return true;
-  } catch (e) { console.warn(e); stream = null; return false; }
+  if (stream && stream.active) return true;
+  stream = null; camErr = '';
+  if (!window.isSecureContext) { camErr = `주소가 <b>https://</b> 로 시작하지 않아서 카메라를 쓸 수 없어요.<br>(지금 주소: ${location.protocol}//…)<br>netlify 같은 곳에 올린 https 주소로 열어주세요.`; return false; }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { camErr = '이 브라우저는 카메라를 지원하지 않아요.<br>크롬으로 열어주세요.'; return false; }
+  const tries = [
+    { video: { facingMode: S.camera, width: { ideal: 1920 }, height: { ideal: 1440 } }, audio: false },
+    { video: { facingMode: S.camera }, audio: false },
+    { video: true, audio: false }
+  ];
+  let last = null;
+  for (const c of tries) {
+    try { stream = await navigator.mediaDevices.getUserMedia(c); break; }
+    catch (e) { last = e; console.warn(e); if (e && (e.name === 'NotAllowedError' || e.name === 'SecurityError')) break; }
+  }
+  if (!stream) {
+    const n = last && last.name;
+    camErr = n === 'NotAllowedError' || n === 'SecurityError'
+      ? '카메라 권한이 꺼져 있어요.<br>패드 <b>설정 → 애플리케이션 → (크롬 또는 스티커 사진관) → 권한 → 카메라 → 허용</b>으로 바꾼 뒤<br>아래 "다시 시도"를 눌러주세요.'
+      : n === 'NotReadableError' || n === 'AbortError'
+        ? '다른 앱이 카메라를 쓰고 있어요.<br>카메라·영상통화 앱을 닫고 "다시 시도"를 눌러주세요.'
+        : n === 'NotFoundError' || n === 'OverconstrainedError'
+          ? '카메라를 찾지 못했어요.<br>설정에서 앞/뒤 카메라를 바꿔 보세요.'
+          : `카메라를 열 수 없어요. (${n || '알 수 없는 오류'})`;
+    return false;
+  }
+  video.srcObject = stream;
+  try { await video.play(); } catch (e) { console.warn(e); }
+  for (let i = 0; i < 30 && !video.videoWidth; i++) await sleep(100);
+  return true;
 }
 function stopCamera() { if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; video.srcObject = null; } }
 function fitCam() {
@@ -829,7 +855,7 @@ async function goCamera() {
   video.classList.toggle('mirror', S.camera === 'user');
   const ok = await startCamera();
   fallback = !ok; fbIndex = 0;
-  $('#noCam').style.display = ok ? 'none' : 'flex';
+  $('#noCam').style.display = ok ? 'none' : 'flex'; $('#noCamWhy').innerHTML = camErr;
   video.style.display = ok ? 'block' : 'none';
   $('#btnShoot').textContent = ok ? '📸 촬영 시작!' : `📷 1번째 찍기`;
   fitCam();
@@ -850,7 +876,8 @@ async function shootAll() {
   const L = LAYOUTS[st.layout]; st.shots = []; fxCache = {}; renderThumbs();
   for (let i = 0; i < L.shots; i++) {
     $('#shotCount').textContent = `${i + 1} / ${L.shots}`;
-    if (!video.videoWidth) await sleep(300);
+    for (let w = 0; w < 20 && !video.videoWidth; w++) await sleep(100);
+    if (!video.videoWidth) { shooting = false; toast('카메라 화면이 아직 준비되지 않았어요'); stopCamera(); goCamera(); return; }
     await countdown(S.countdown);
     flash(); shutter(); st.shots[i] = grabVideo(i); renderThumbs();
     if (i < L.shots - 1) { $('#camMsg').textContent = i === L.shots - 2 ? CHEERS[2] : CHEERS[i % 2]; await sleep(S.pause * 1000); $('#camMsg').textContent = ''; }
@@ -1246,6 +1273,7 @@ $('#sSave').onclick = () => {
 /* ===================== 시작 ===================== */
 applyS();
 if (document.fonts && document.fonts.load) Promise.all([document.fonts.load('60px Jua','가나다라 ABC 0123'),document.fonts.load('700 60px Pretendard','가나다라 ABC 0123')]).then(() => { if (cur === 'edit') { renderBase(); draw(); } }).catch(() => { });
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').catch(() => { });
 </script>
 </body>
 </html>
