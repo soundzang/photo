@@ -1236,12 +1236,12 @@ async function doPrint(given) {
   $('#doneImg').src = lastUrl; show('done'); startDoneCount();
   setTimeout(() => { try { window.print(); } catch (e) { toast('인쇄 창을 열 수 없어요'); } }, 350);
 }
-function startDoneCount() {
-  clearInterval(doneTimer); let n = 45; $('#dCount').textContent = `(${n})`;
+function startDoneCount(n0 = 45) {
+  clearInterval(doneTimer); let n = n0; $('#dCount').textContent = `(${n})`;
   doneTimer = setInterval(() => { if (cur !== 'done') { clearInterval(doneTimer); return; } n--; $('#dCount').textContent = `(${n})`; if (n <= 0) { clearInterval(doneTimer); goHome(); } }, 1000);
 }
-// 인쇄 창이 닫히면(인쇄했거나 닫았거나) 잠시 뒤 첫 화면으로 돌아가며 사진·편집 정보를 지움. (afterprint가 안 오는 기기를 위해 카운트다운도 유지)
-window.addEventListener('afterprint', () => { lastAct = Date.now(); if (cur === 'done') { clearInterval(doneTimer); setTimeout(() => { if (cur === 'done') goHome(); }, 1200); } });
+// 인쇄 창이 닫히면(인쇄했거나 닫았거나) 10초 뒤 첫 화면으로 돌아가며 사진·편집 정보를 지움. (afterprint가 안 오는 기기를 위해 카운트다운도 유지)
+window.addEventListener('afterprint', () => { lastAct = Date.now(); if (cur === 'done') startDoneCount(10); });
 $('#dPrint').onclick = () => { startDoneCount(); window.print(); };
 function stamp() { const d = new Date(), p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`; }
 function downloadCanvas(c, after) {
@@ -1250,8 +1250,8 @@ function downloadCanvas(c, after) {
     const url = URL.createObjectURL(blob), a = document.createElement('a');
     a.href = url; a.download = `스티커사진_${stamp()}.jpg`; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
-    toast('💾 사진을 저장했어요 (다운로드 폴더)');
-    if (after) setTimeout(after, 1400);   // 저장이 끝나면 첫 화면으로
+    toast(after ? '💾 저장했어요! 10초 뒤 처음 화면으로 돌아가요' : '💾 사진을 저장했어요 (다운로드 폴더)');
+    if (after) scheduleHome(10);   // 저장이 끝나고 10초 뒤 첫 화면으로
   }, 'image/jpeg', .95);
 }
 function saveCurrent() { const keep = st.sel; st.sel = null; updSel(); downloadCanvas(renderFinal(), goHome); st.sel = keep; updSel(); draw(); }
@@ -1261,9 +1261,11 @@ $('#eSave').onclick = () => saveCurrent();
 $('#dHome').onclick = () => goHome();
 
 /* ===================== 처음으로 / 자동 초기화 ===================== */
+let homeTimer = null;
+function scheduleHome(sec) { clearTimeout(homeTimer); homeTimer = setTimeout(() => { homeTimer = null; goHome(); }, sec * 1000); }
 let a4Done = false;   // A4 4세트를 인쇄/저장했으면 첫 화면으로 갈 때 저장된 세트도 모두 지움
 function goHome() {
-  shooting = false; stopCamera(); clearInterval(doneTimer);
+  shooting = false; stopCamera(); clearInterval(doneTimer); clearTimeout(homeTimer); homeTimer = null;
   st.items = []; st.shots = []; st.sel = null; st.hist = []; st.fx = 'none'; st.frame = 'white'; st.caption = S.caption; st.showDate = S.showDate; fxCache = {}; setPen(false);
   lastUrl = ''; try { $('#doneImg').removeAttribute('src'); $('#printImg').removeAttribute('src'); } catch (e) { }
   if (a4Done) { a4Done = false; A4.fill(null); persistA4(); }
