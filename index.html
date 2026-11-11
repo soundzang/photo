@@ -1058,8 +1058,8 @@ function drawItem(x, it) {
 }
 function corners(it) { const hw = it.w * it.s / 2, hh = it.h * it.s / 2, c = Math.cos(it.r), s = Math.sin(it.r), P = (vx, vy) => [it.x + vx * c - vy * s, it.y + vx * s + vy * c]; return { tl: P(-hw, -hh), tr: P(hw, -hh), br: P(hw, hh), bl: P(-hw, hh) }; }
 const scaleK = () => W / (cv.getBoundingClientRect().width || W);
-const hr = () => 24 * scaleK();
-function knob(x, [px, py], col, ch) { const r = hr(); x.beginPath(); x.arc(px, py, r, 0, 6.2832); x.fillStyle = col; x.fill(); x.lineWidth = r * .18; x.strokeStyle = '#fff'; x.stroke(); x.fillStyle = '#fff'; x.font = `${r * 1.15}px sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(ch, px, py + r * .06); }
+const hr = () => 24 * scaleK();   // 손잡이 버튼은 knob()에서 .55배로 작게 그리고, 터치 인식 범위는 1.1배
+function knob(x, [px, py], col, ch) { const r = hr() * .55; x.beginPath(); x.arc(px, py, r, 0, 6.2832); x.fillStyle = col; x.fill(); x.lineWidth = r * .16; x.strokeStyle = '#fff'; x.stroke(); x.fillStyle = '#fff'; x.font = `${r * 1.1}px sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(ch, px, py + r * .06); }
 function drawSel(x, it) {
   const k = corners(it); x.save(); x.setLineDash([12 * scaleK(), 8 * scaleK()]); x.lineWidth = 3 * scaleK(); x.strokeStyle = '#ff5c8a';
   x.beginPath();[k.tl, k.tr, k.br, k.bl].forEach((p, i) => i ? x.lineTo(p[0], p[1]) : x.moveTo(p[0], p[1])); x.closePath(); x.stroke(); x.setLineDash([]);
@@ -1091,7 +1091,7 @@ cv.addEventListener('pointerdown', e => {
   if (pts.size === 1) {
     const it = st.sel;
     if (it) {
-      const k = corners(it), r = hr() * 1.5;
+      const k = corners(it), r = hr() * 1.1;
       if (dist(p, k.tl) < r) { delItem(it); g = null; return; }
       if (dist(p, k.br) < r) { const v = [p[0] - it.x, p[1] - it.y]; g = { t: 'handle', it, d0: Math.hypot(v[0], v[1]) || 1, a0: Math.atan2(v[1], v[0]), s0: it.s, r0: it.r, moved: false }; return; }
     }
