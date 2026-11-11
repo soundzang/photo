@@ -820,7 +820,22 @@ function show(id) {
 let actx = null;
 function ac() { if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { } } if (actx && actx.state === 'suspended') actx.resume(); return actx; }
 function beep(f = 880, d = .12, v = .25) { if (!S.sound) return; const a = ac(); if (!a) return; const o = a.createOscillator(), g = a.createGain(); o.frequency.value = f; g.gain.setValueAtTime(v, a.currentTime); g.gain.exponentialRampToValueAtTime(.001, a.currentTime + d); o.connect(g).connect(a.destination); o.start(); o.stop(a.currentTime + d); }
-function shutter() { if (!S.sound) return; const a = ac(); if (!a) return; const len = a.sampleRate * .15 | 0, b = a.createBuffer(1, len, a.sampleRate), d = b.getChannelData(0); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3); const s = a.createBufferSource(); s.buffer = b; const g = a.createGain(); g.gain.value = .6; s.connect(g).connect(a.destination); s.start(); }
+// 실제 카메라(DSLR) 셔터 소리: "찰(미러·셔터 열림) — 칵(셔터 닫힘)" 두 번의 기계음을 합성
+function shutterSound(a, t0, vol = 1) {
+  const out = a.createGain(); out.gain.value = vol; out.connect(a.destination);
+  const nb = (len) => { const b = a.createBuffer(1, a.sampleRate * len | 0, a.sampleRate), d = b.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; return b; };
+  const click = (t, dur, freq, q, g) => { const s = a.createBufferSource(); s.buffer = nb(dur + .02); const f = a.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = q; const e = a.createGain(); e.gain.setValueAtTime(g, t); e.gain.exponentialRampToValueAtTime(.001, t + dur); s.connect(f); f.connect(e); e.connect(out); s.start(t); s.stop(t + dur + .02); };
+  const thump = (t, f0, f1, dur, g) => { const o = a.createOscillator(), e = a.createGain(); o.type = 'sine'; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur); e.gain.setValueAtTime(g, t); e.gain.exponentialRampToValueAtTime(.001, t + dur); o.connect(e); e.connect(out); o.start(t); o.stop(t + dur + .02); };
+  const ring = (t, f, dur, g) => { const o = a.createOscillator(), e = a.createGain(); o.type = 'triangle'; o.frequency.value = f; e.gain.setValueAtTime(g, t); e.gain.exponentialRampToValueAtTime(.001, t + dur); o.connect(e); e.connect(out); o.start(t); o.stop(t + dur + .02); };
+  // 1) 찰 — 미러가 올라가며 셔터막이 열리는 소리
+  click(t0, .018, 4200, 1.1, 1.0); click(t0 + .004, .05, 1500, .8, .55); thump(t0, 190, 55, .06, .7); ring(t0, 2600, .03, .07); ring(t0, 3900, .02, .05);
+  // 2) 칵 — 약 70ms 뒤 셔터막이 닫히며 나는 더 낮고 둔탁한 소리
+  const t1 = t0 + .075;
+  click(t1, .024, 2600, 1.0, .85); click(t1 + .006, .07, 900, .7, .6); thump(t1, 130, 45, .08, .6); ring(t1, 1800, .035, .06);
+  // 3) 아주 작은 기계 울림
+  click(t1 + .05, .05, 700, 1.5, .12);
+}
+function shutter() { if (!S.sound) return; const a = ac(); if (!a) return; shutterSound(a, a.currentTime + .005, .9); }
 function pop() { beep(660, .08, .15); }
 
 /* ===================== 대기 화면 ===================== */
@@ -1225,28 +1240,33 @@ function startDoneCount() {
   clearInterval(doneTimer); let n = 45; $('#dCount').textContent = `(${n})`;
   doneTimer = setInterval(() => { if (cur !== 'done') { clearInterval(doneTimer); return; } n--; $('#dCount').textContent = `(${n})`; if (n <= 0) { clearInterval(doneTimer); goHome(); } }, 1000);
 }
-window.addEventListener('afterprint', () => { lastAct = Date.now(); if (cur === 'done') startDoneCount(); });
+// 인쇄 창이 닫히면(인쇄했거나 닫았거나) 잠시 뒤 첫 화면으로 돌아가며 사진·편집 정보를 지움. (afterprint가 안 오는 기기를 위해 카운트다운도 유지)
+window.addEventListener('afterprint', () => { lastAct = Date.now(); if (cur === 'done') { clearInterval(doneTimer); setTimeout(() => { if (cur === 'done') goHome(); }, 1200); } });
 $('#dPrint').onclick = () => { startDoneCount(); window.print(); };
 function stamp() { const d = new Date(), p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`; }
-function downloadCanvas(c) {
+function downloadCanvas(c, after) {
   c.toBlob(blob => {
     if (!blob) { toast('사진을 만들 수 없어요'); return; }
     const url = URL.createObjectURL(blob), a = document.createElement('a');
     a.href = url; a.download = `스티커사진_${stamp()}.jpg`; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
     toast('💾 사진을 저장했어요 (다운로드 폴더)');
+    if (after) setTimeout(after, 1400);   // 저장이 끝나면 첫 화면으로
   }, 'image/jpeg', .95);
 }
-function saveCurrent() { const keep = st.sel; st.sel = null; updSel(); downloadCanvas(renderFinal()); st.sel = keep; updSel(); draw(); }
-$('#dSave').onclick = () => { const im = new Image(); im.onload = () => { const c = mk(im.naturalWidth, im.naturalHeight); c.getContext('2d').drawImage(im, 0, 0); downloadCanvas(c); }; im.src = lastUrl; };
+function saveCurrent() { const keep = st.sel; st.sel = null; updSel(); downloadCanvas(renderFinal(), goHome); st.sel = keep; updSel(); draw(); }
+$('#dSave').onclick = () => { const im = new Image(); im.onload = () => { const c = mk(im.naturalWidth, im.naturalHeight); c.getContext('2d').drawImage(im, 0, 0); downloadCanvas(c, goHome); }; im.src = lastUrl; };
 $('#revSave').onclick = () => saveCurrent();
 $('#eSave').onclick = () => saveCurrent();
 $('#dHome').onclick = () => goHome();
 
 /* ===================== 처음으로 / 자동 초기화 ===================== */
+let a4Done = false;   // A4 4세트를 인쇄/저장했으면 첫 화면으로 갈 때 저장된 세트도 모두 지움
 function goHome() {
   shooting = false; stopCamera(); clearInterval(doneTimer);
-  st.items = []; st.shots = []; st.sel = null; fxCache = {}; setPen(false);
+  st.items = []; st.shots = []; st.sel = null; st.hist = []; st.fx = 'none'; st.frame = 'white'; st.caption = S.caption; st.showDate = S.showDate; fxCache = {}; setPen(false);
+  lastUrl = ''; try { $('#doneImg').removeAttribute('src'); $('#printImg').removeAttribute('src'); } catch (e) { }
+  if (a4Done) { a4Done = false; A4.fill(null); persistA4(); }
   $$('.modal').forEach(m => m.classList.remove('open'));
   st.a4slot = null; show('attract');
 }
@@ -1301,8 +1321,8 @@ function saveSet() {
   st.items = []; st.shots = []; fxCache = {};
   toast(`💾 ${i + 1}세트를 저장했어요`); openBoard();
 }
-$('#bPrint').onclick = () => { if (A4.every(Boolean)) doPrint(composeA4(false)); };
-$('#bSave').onclick = () => { if (A4.every(Boolean)) downloadCanvas(composeA4(false)); };
+$('#bPrint').onclick = () => { if (A4.every(Boolean)) { a4Done = true; doPrint(composeA4(false)); } };
+$('#bSave').onclick = () => { if (A4.every(Boolean)) { a4Done = true; downloadCanvas(composeA4(false), goHome); } };
 $('#bReset').onclick = async () => { if (await ask('저장한 4세트를 모두 지우고 새로 시작할까요?')) { A4.fill(null); persistA4(); renderBoard(); } };
 $('#bHome').onclick = () => goHome();
 ['pointerdown', 'keydown'].forEach(ev => document.addEventListener(ev, () => { lastAct = Date.now(); }, true));
