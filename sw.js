@@ -1,5 +1,5 @@
 // 인생컷 사진관 서비스 워커: 앱 설치 + 인터넷이 잠깐 끊겨도 실행되게 저장해 둠
-const CACHE = 'photobooth-v3';
+const CACHE = 'photobooth-v4';
 const FILES = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
